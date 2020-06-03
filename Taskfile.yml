@@ -1,0 +1,93 @@
+# https://taskfile.dev
+
+version: '2'
+
+tasks:
+  clean:
+    desc: Delete build artifacts
+    cmds: [rm -rf bin/*]
+  tryrelease:
+    desc: Build the tryrelease executable
+    dir: bin
+    cmds:
+      - go build -v -ldflags="{{.LDFLAGS}}" ../cmd/tryrelease
+    vars:
+      FULL_VERSION: &full-version
+        sh: git describe --long --dirty --always
+      SEMVER: &semver
+        sh: git describe --abbrev=0
+      LDFLAGS: -w -s -X main.fullVersion={{.FULL_VERSION}} -X main.semver={{.SEMVER}}
+
+  # usage: env RELEASE_TAG=v0.1.0 summon task release
+  release:
+    desc: Build a release and upload to GitHub as draft. You need to transition
+      from draft to published in the web UI.
+    preconditions:
+      - sh: test -n "$RELEASE_TAG"
+        msg: "error: missing environment variable RELEASE_TAG"
+      - sh: test -z $(git status --porcelain)
+        msg: "error: git dirty"
+      - sh: test -z $(git status --branch --porcelain | grep ahead)
+        msg: "error: git local branch ahead"
+    cmds:
+      # - task: unit-test
+      # We create the (local) git tag now, after having ran the unit tests and
+      # before building the executables, so that we can embed this information
+      # in the binaries.
+      # To recover: delete local tag: git tag --delete tagname
+      - git tag -a {{.RELEASE_TAG}} -m ''
+      - task: release-linux
+      - task: release-darwin
+      # - task: system-test
+      - task: test
+      # We create the release as a draft (that is: not visible to the public).
+      # The act of "publishing" the release is left to a human from the web UI.
+      - >
+        github-release release
+        --tag {{.RELEASE_TAG}}
+        --draft
+        --description "See the [CHANGELOG](https://github.com/$GITHUB_USER/$GITHUB_REPO/blob/{{.RELEASE_TAG}}/CHANGELOG.md)"
+      # Upload the artifacts.
+      - >
+        github-release upload
+        --tag {{.RELEASE_TAG}}
+        --name tryrelease-linux-amd64.zip
+        --file bin/linux/tryrelease-linux-amd64.zip
+      - >
+        github-release upload
+        --tag {{.RELEASE_TAG}}
+        --name tryrelease-darwin-amd64.zip
+        --file bin/darwin/tryrelease-darwin-amd64.zip
+      # We don't push the git tag. Instead, in the web UI, the act of
+      # transitioning the release from draft to published will create the
+      # corresponding tag in the remote repository. This is safer, because it
+      # reduces the situations when one might be tempted to delete a public tag
+      # due to a mistake in the release.
+      - cmd: |
+          echo "Draft release $RELEASE_TAG created successfully."
+          echo "Remember to publish it in the GitHub web UI https://github.com/$GITHUB_USER/$GITHUB_REPO/releases"
+        silent: true
+    env:
+      GITHUB_USER: marco-m
+      GITHUB_REPO: tryrelease
+      # GITHUB_TOKEN expected to be set securely via `summon` or equivalent
+  release-linux:
+    dir: bin/linux
+    cmds: &release-cmds
+      - go build -v -ldflags="-w -s -X main.version={{.FULL_VERSION}}" ../../cmd/tryrelease
+      - zip tryrelease-$GOOS-$GOARCH.zip tryrelease
+    env:
+      CGO_ENABLED: 0
+      GOOS: linux
+      GOARCH: amd64
+    vars:
+      FULL_VERSION: *full-version
+  release-darwin:
+    dir: bin/darwin
+    cmds: *release-cmds
+    env:
+      CGO_ENABLED: 0
+      GOOS: darwin
+      GOARCH: amd64
+    vars:
+      FULL_VERSION: *full-version
