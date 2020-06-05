@@ -39,7 +39,6 @@ tasks:
       - task: release-linux
       - task: release-darwin
       # - task: system-test
-      - task: test
       # We create the release as a draft (that is: not visible to the public).
       # The act of "publishing" the release is left to a human from the web UI.
       - >

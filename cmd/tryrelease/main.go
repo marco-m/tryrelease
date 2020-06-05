@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"path"
 	"runtime"
 	"time"
 )
@@ -48,7 +47,9 @@ func run(progname string, args []string, out io.Writer) int {
 		return 0
 	}
 	if *checkVersion {
-		checkGitHubVersion(out, "marco-m", "tryrelease", semver)
+		if err := checkGitHubVersion(out, "marco-m", "tryrelease", semver); err != nil {
+			fmt.Fprintln(out, err)
+		}
 		return 0
 	}
 
@@ -61,22 +62,29 @@ func run(progname string, args []string, out io.Writer) int {
 func checkGitHubVersion(out io.Writer, owner, repo, currVersion string) error {
 	// ==> vagrant: A new version of Vagrant is available: 2.2.9 (installed version: 2.2.8)!
 	// ==> vagrant: To upgrade visit: https://www.vagrantup.com/downloads.html
-	fmt.Fprintln(out, semver)
+	fmt.Fprintln(out, "installed version", semver)
 
 	// API: GET /repos/:owner/:repo/releases/latest
-	url := "https://api.github.com" + path.Join("/repos", owner, repo, "releases/latest")
+	api_url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
+	human_url := fmt.Sprintf("https://github.com/%s/%s/releases", owner, repo)
 
 	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, api_url, nil)
 	if err != nil {
 		return fmt.Errorf("create http request: %w", err)
 	}
 	client := &http.Client{}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("http client Do: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		fmt.Fprintln(out, "no release found at", human_url)
+		return nil
+	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
