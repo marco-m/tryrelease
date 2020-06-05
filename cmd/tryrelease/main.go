@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -13,12 +14,14 @@ import (
 	"os"
 	"runtime"
 	"time"
+
+	"golang.org/x/mod/semver"
 )
 
 var (
 	// Filled by the linker.
-	fullVersion = "unknown" // example: v0.0.9-8-g941583d027-dirty
-	semver      = "unknown" // example: v0.0.9
+	fullVersion  = "unknown" // example: v0.0.9-8-g941583d027-dirty
+	shortVersion = "unknown" // example: v0.0.9
 )
 
 func main() {
@@ -47,7 +50,7 @@ func run(progname string, args []string, out io.Writer) int {
 		return 0
 	}
 	if *checkVersion {
-		if err := checkGitHubVersion(out, "marco-m", "tryrelease", semver); err != nil {
+		if err := checkGitHubVersion(out, "marco-m", "tryrelease", shortVersion); err != nil {
 			fmt.Fprintln(out, err)
 		}
 		return 0
@@ -60,10 +63,6 @@ func run(progname string, args []string, out io.Writer) int {
 
 // https://developer.github.com/v3/repos/releases/#get-the-latest-release
 func checkGitHubVersion(out io.Writer, owner, repo, currVersion string) error {
-	// ==> vagrant: A new version of Vagrant is available: 2.2.9 (installed version: 2.2.8)!
-	// ==> vagrant: To upgrade visit: https://www.vagrantup.com/downloads.html
-	fmt.Fprintln(out, "installed version", semver)
-
 	// API: GET /repos/:owner/:repo/releases/latest
 	api_url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
 	human_url := fmt.Sprintf("https://github.com/%s/%s/releases", owner, repo)
@@ -91,7 +90,39 @@ func checkGitHubVersion(out io.Writer, owner, repo, currVersion string) error {
 		return fmt.Errorf("http reading response: %w", err)
 	}
 
-	fmt.Fprintln(out, string(respBody))
+	type Response struct {
+		TagName string `json:"tag_name"`
+	}
+	var response Response
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return fmt.Errorf("parsing JSON response: %w", err)
+	}
+	if response.TagName == "" {
+		return fmt.Errorf("parsing JSON response: missing field tag_name")
+	}
+
+	if !semver.IsValid(shortVersion) {
+		return fmt.Errorf("installed version is not a valid semver: %s", shortVersion)
+	}
+	if !semver.IsValid(response.TagName) {
+		return fmt.Errorf("fetched last version is not a valid semver: %s", response.TagName)
+	}
+
+	// ==> vagrant: A new version of Vagrant is available: 2.2.9 (installed version: 2.2.8)!
+	// ==> vagrant: To upgrade visit: https://www.vagrantup.com/downloads.html
+
+	switch semver.Compare(shortVersion, response.TagName) {
+	case 0:
+		fmt.Fprintf(out, "installed version %s is the same as the latest version %s\n",
+			shortVersion, response.TagName)
+	case -1:
+		fmt.Fprintf(out, "installed version %s is older than the latest version %s\n",
+			shortVersion, response.TagName)
+		fmt.Fprintln(out, "To upgrade, visit", human_url)
+	case +1:
+		fmt.Fprintf(out, "(unexpected?) installed version %s is newer than the latest version %s\n",
+			shortVersion, response.TagName)
+	}
 
 	return nil
 }

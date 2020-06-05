@@ -14,9 +14,9 @@ tasks:
     vars:
       FULL_VERSION: &full-version
         sh: git describe --long --dirty --always
-      SEMVER: &semver
+      SHORT_VERSION: &short-version
         sh: git describe --abbrev=0
-      LDFLAGS: -w -s -X main.fullVersion={{.FULL_VERSION}} -X main.semver={{.SEMVER}}
+      LDFLAGS: &ldflags -w -s -X main.fullVersion={{.FULL_VERSION}} -X main.shortVersion={{.SHORT_VERSION}}
 
   # usage: env RELEASE_TAG=v0.1.0 summon task release
   release:
@@ -73,7 +73,7 @@ tasks:
   release-linux:
     dir: bin/linux
     cmds: &release-cmds
-      - go build -v -ldflags="-w -s -X main.version={{.FULL_VERSION}}" ../../cmd/tryrelease
+      - go build -v -ldflags="{{.LDFLAGS}}" ../../cmd/tryrelease
       - zip tryrelease-$GOOS-$GOARCH.zip tryrelease
     env:
       CGO_ENABLED: 0
@@ -81,6 +81,8 @@ tasks:
       GOARCH: amd64
     vars:
       FULL_VERSION: *full-version
+      SHORT_VERSION: *short-version
+      LDFLAGS: *ldflags
   release-darwin:
     dir: bin/darwin
     cmds: *release-cmds
@@ -90,3 +92,5 @@ tasks:
       GOARCH: amd64
     vars:
       FULL_VERSION: *full-version
+      SHORT_VERSION: *short-version
+      LDFLAGS: *ldflags
