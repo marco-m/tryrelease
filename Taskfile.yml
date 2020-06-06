@@ -11,14 +11,16 @@ tasks:
     dir: bin
     cmds:
       - go build -v -ldflags="{{.LDFLAGS}}" ../cmd/tryrelease
-    vars:
-      FULL_VERSION: &full-version
+    vars: &build-vars
+      FULL_VERSION:
         sh: git describe --long --dirty --always
-      SHORT_VERSION: &short-version
+      SHORT_VERSION:
         sh: git describe --abbrev=0
-      LDFLAGS: &ldflags -w -s -X main.fullVersion={{.FULL_VERSION}} -X main.shortVersion={{.SHORT_VERSION}}
+      LDFLAGS: -w -s -X main.fullVersion={{.FULL_VERSION}} -X main.shortVersion={{.SHORT_VERSION}}
 
+  #
   # usage: env RELEASE_TAG=v0.1.0 summon task release
+  #
   release:
     desc: Build a release and upload to GitHub as draft. You need to transition
       from draft to published in the web UI.
@@ -45,7 +47,8 @@ tasks:
         github-release release
         --tag {{.RELEASE_TAG}}
         --draft
-        --description "See the [CHANGELOG](https://github.com/$GITHUB_USER/$GITHUB_REPO/blob/{{.RELEASE_TAG}}/CHANGELOG.md)"
+        --description
+        "See the [CHANGELOG](https://github.com/$GITHUB_USER/$GITHUB_REPO/blob/{{.RELEASE_TAG}}/CHANGELOG.md)"
       # Upload the artifacts.
       - >
         github-release upload
@@ -79,10 +82,7 @@ tasks:
       CGO_ENABLED: 0
       GOOS: linux
       GOARCH: amd64
-    vars:
-      FULL_VERSION: *full-version
-      SHORT_VERSION: *short-version
-      LDFLAGS: *ldflags
+    vars: *build-vars
   release-darwin:
     dir: bin/darwin
     cmds: *release-cmds
@@ -90,7 +90,4 @@ tasks:
       CGO_ENABLED: 0
       GOOS: darwin
       GOARCH: amd64
-    vars:
-      FULL_VERSION: *full-version
-      SHORT_VERSION: *short-version
-      LDFLAGS: *ldflags
+    vars: *build-vars

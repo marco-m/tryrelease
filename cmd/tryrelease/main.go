@@ -65,9 +65,10 @@ func run(progname string, args []string, out io.Writer) int {
 func checkGitHubVersion(out io.Writer, owner, repo, currVersion string) error {
 	// API: GET /repos/:owner/:repo/releases/latest
 	api_url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
-	human_url := fmt.Sprintf("https://github.com/%s/%s/releases", owner, repo)
+	human_url := fmt.Sprintf("https://github.com/%s/%s", owner, repo)
 
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, api_url, nil)
 	if err != nil {
 		return fmt.Errorf("create http request: %w", err)
@@ -79,12 +80,10 @@ func checkGitHubVersion(out io.Writer, owner, repo, currVersion string) error {
 		return fmt.Errorf("http client Do: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode == http.StatusNotFound {
 		fmt.Fprintln(out, "no release found at", human_url)
 		return nil
 	}
-
 	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("http reading response: %w", err)
@@ -108,9 +107,6 @@ func checkGitHubVersion(out io.Writer, owner, repo, currVersion string) error {
 		return fmt.Errorf("fetched last version is not a valid semver: %s", response.TagName)
 	}
 
-	// ==> vagrant: A new version of Vagrant is available: 2.2.9 (installed version: 2.2.8)!
-	// ==> vagrant: To upgrade visit: https://www.vagrantup.com/downloads.html
-
 	switch semver.Compare(shortVersion, response.TagName) {
 	case 0:
 		fmt.Fprintf(out, "installed version %s is the same as the latest version %s\n",
@@ -118,7 +114,7 @@ func checkGitHubVersion(out io.Writer, owner, repo, currVersion string) error {
 	case -1:
 		fmt.Fprintf(out, "installed version %s is older than the latest version %s\n",
 			shortVersion, response.TagName)
-		fmt.Fprintln(out, "To upgrade, visit", human_url)
+		fmt.Fprintln(out, "To upgrade visit", human_url)
 	case +1:
 		fmt.Fprintf(out, "(unexpected?) installed version %s is newer than the latest version %s\n",
 			shortVersion, response.TagName)
